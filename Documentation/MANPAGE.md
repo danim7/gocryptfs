@@ -58,6 +58,15 @@ prior to 1.9, which fall back to weak random data when the getrandom syscall
 is blocking. Using this option can block indefinitely when the kernel cannot
 harvest enough entropy.
 
+#### -dirivcache_size    int
+#### -dirivcache_timeout int
+These two parameters control the Directory IV cache. The size parameter (default 100) 
+defines the maximum number of entries in the cache. The timeout parameter (default 1) 
+defines the number of seconds before the cache is invalidated. In local mounts, 
+where a single instance writes to the CIPHERDIR and it cannot change behind its back, 
+these parameters may increase performance, as they reduce the number of disk seeks 
+needed to read gocryptfs.diriv files.
+
 #### -extpass string
 Use an external program (like ssh-askpass) for the password prompt.
 The program should return the password on stdout, a trailing newline is

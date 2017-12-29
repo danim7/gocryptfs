@@ -194,17 +194,19 @@ func initFuseFrontend(masterkey []byte, args *argContainer, confFile *configfile
 		args.allow_other = true
 	}
 	frontendArgs := fusefrontend.Args{
-		Cipherdir:      args.cipherdir,
-		PlaintextNames: args.plaintextnames,
-		LongNames:      args.longnames,
-		CryptoBackend:  cryptoBackend,
-		ConfigCustom:   args._configCustom,
-		Raw64:          args.raw64,
-		NoPrealloc:     args.noprealloc,
-		HKDF:           args.hkdf,
-		SerializeReads: args.serialize_reads,
-		ForceDecode:    args.forcedecode,
-		ForceOwner:     args._forceOwner,
+		Cipherdir:      	args.cipherdir,
+		PlaintextNames: 	args.plaintextnames,
+		LongNames:      	args.longnames,
+		CryptoBackend:  	cryptoBackend,
+		ConfigCustom:   	args._configCustom,
+		Raw64:          	args.raw64,
+		NoPrealloc:     	args.noprealloc,
+		HKDF:           	args.hkdf,
+		SerializeReads: 	args.serialize_reads,
+		ForceDecode:    	args.forcedecode,
+		ForceOwner:     	args._forceOwner,
+		DirIVCache_size:	args.dirivcache_size,
+		DirIVCache_timeout:	args.dirivcache_timeout,
 	}
 	// confFile is nil when "-zerokey" or "-masterkey" was used
 	if confFile != nil {

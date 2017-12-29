@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-const (
-	maxEntries = 100
-	expireTime = 1 * time.Second
-)
-
 type cacheEntry struct {
 	// DirIV of the directory.
 	iv []byte
@@ -31,11 +26,17 @@ type DirIVCache struct {
 	rootDirIV []byte
 
 	// expiry is the time when the whole cache expires.
-	// The cached entry my become out-of-date if the ciphertext directory is
+	// The cached entry may become out-of-date if the ciphertext directory is
 	// modifed behind the back of gocryptfs. Having an expiry time limits the
-	// inconstency to one second, like attr_timeout does for the kernel
+	// inconstency to one second (by default), like attr_timeout does for the kernel
 	// getattr cache.
 	expiry time.Time
+
+	// Max number of entries in the map cache (default 100)
+	MaxEntries int
+
+	// Timeout in seconds before cache is invalidated (default 1)
+	MaxTime int
 
 	sync.RWMutex
 }
@@ -68,6 +69,7 @@ func (c *DirIVCache) Lookup(dir string) (iv []byte, cDir string) {
 func (c *DirIVCache) Store(dir string, iv []byte, cDir string) {
 	c.Lock()
 	defer c.Unlock()
+
 	if dir == "" {
 		c.rootDirIV = iv
 	}
@@ -78,12 +80,12 @@ func (c *DirIVCache) Store(dir string, iv []byte, cDir string) {
 	}
 	// Clear() may have cleared c.data: re-initialize
 	if c.data == nil {
-		c.data = make(map[string]cacheEntry, maxEntries)
-		// Set expiry time one second into the future
-		c.expiry = time.Now().Add(expireTime)
+		c.data = make(map[string]cacheEntry, c.MaxEntries)
+		// Set expiry time c.MaxTime seconds into the future
+		c.expiry = time.Now().Add(time.Duration(c.MaxTime) * time.Second)
 	}
-	// Delete a random entry from the map if reached maxEntries
-	if len(c.data) >= maxEntries {
+	// Delete a random entry from the map if reached MaxEntries
+	if len(c.data) >= c.MaxEntries {
 		for k := range c.data {
 			delete(c.data, k)
 			break
@@ -92,8 +94,17 @@ func (c *DirIVCache) Store(dir string, iv []byte, cDir string) {
 	c.data[dir] = cacheEntry{iv, cDir}
 }
 
-// Clear ... clear the cache.
+// Remove an entry from the cache.
 // Called from fusefrontend when directories are renamed or deleted.
+// dir ... relative plaintext path
+func (c *DirIVCache) Remove(dir string) {
+	c.Lock()
+	defer c.Unlock()
+
+	delete(c.data, dir)
+}
+
+// Clear ... clear the cache.
 func (c *DirIVCache) Clear() {
 	c.Lock()
 	defer c.Unlock()

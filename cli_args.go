@@ -27,7 +27,7 @@ type argContainer struct {
 	memprofile, ko, passfile, ctlsock, fsname, force_owner, trace string
 	// Configuration file name override
 	config             string
-	notifypid, scryptn int
+	notifypid, scryptn, dirivcache_size, dirivcache_timeout int
 	// Helper variables that are NOT cli options all start with an underscore
 	// _configCustom is true when the user sets a custom config file name.
 	_configCustom bool
@@ -148,6 +148,8 @@ func parseCliOpts() (args argContainer) {
 		"successful mount - used internally for daemonization")
 	flagSet.IntVar(&args.scryptn, "scryptn", configfile.ScryptDefaultLogN, "scrypt cost parameter logN. Possible values: 10-28. "+
 		"A lower value speeds up mounting and reduces its memory needs, but makes the password susceptible to brute-force attacks")
+	flagSet.IntVar(&args.dirivcache_size, "dirivcache_size", 20000, "Max number of entries in the Dir IV cache")
+	flagSet.IntVar(&args.dirivcache_timeout, "dirivcache_timeout", 72000, "Max age of Dir IV cache before invalidating, in seconds")
 	// Ignored otions
 	var dummyBool bool
 	ignoreText := "(ignored for compatibility)"

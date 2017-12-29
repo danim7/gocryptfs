@@ -49,7 +49,7 @@ func NewFS(masterkey []byte, args fusefrontend.Args) *ReverseFS {
 	initLongnameCache()
 	cryptoCore := cryptocore.New(masterkey, args.CryptoBackend, contentenc.DefaultIVBits, args.HKDF, false)
 	contentEnc := contentenc.New(cryptoCore, contentenc.DefaultBS, false)
-	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64)
+	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64, args.DirIVCache_size, args.DirIVCache_timeout)
 
 	return &ReverseFS{
 		// pathfs.defaultFileSystem returns ENOSYS for all operations

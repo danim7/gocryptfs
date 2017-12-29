@@ -39,4 +39,8 @@ type Args struct {
 	SerializeReads bool
 	// Force decode even if integrity check fails (openSSL only)
 	ForceDecode bool
+	//DirIV cache, max number of entries
+	DirIVCache_size int
+	//DirIV cache, timeout in seconds
+	DirIVCache_timeout int
 }

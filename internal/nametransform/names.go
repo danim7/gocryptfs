@@ -24,14 +24,18 @@ type NameTransform struct {
 }
 
 // New returns a new NameTransform instance.
-func New(e *eme.EMECipher, longNames bool, raw64 bool) *NameTransform {
+func New(e *eme.EMECipher, longNames bool, raw64 bool, maxEntries int, timeout int) *NameTransform {
 	b64 := base64.URLEncoding
 	if raw64 {
 		b64 = base64.RawURLEncoding
 	}
+	var dirIVCache dirivcache.DirIVCache
+	dirIVCache.MaxEntries = maxEntries
+	dirIVCache.MaxTime = timeout
 	return &NameTransform{
 		emeCipher: e,
 		longNames: longNames,
+		DirIVCache: dirIVCache,
 		B64:       b64,
 	}
 }
