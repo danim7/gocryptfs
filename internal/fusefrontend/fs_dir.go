@@ -27,13 +27,13 @@ const dsStoreName = ".DS_Store"
 // mkdirWithIv - create a new directory and corresponding diriv file. dirfd
 // should be a handle to the parent directory, cName is the name of the new
 // directory and mode specifies the access permissions to use.
-func (fs *FS) mkdirWithIv(dirfd *os.File, cName string, mode uint32) error {
+func (fs *FS) mkdirWithIv(dirfd *os.File, pName string, cName string, mode uint32) error {
 	// Between the creation of the directory and the creation of gocryptfs.diriv
 	// the directory is inconsistent. Take the lock to prevent other readers
 	// from seeing it.
 	fs.dirIVLock.Lock()
 	// The new directory may take the place of an older one that is still in the cache
-	fs.nameTransform.DirIVCache.Clear()
+	fs.nameTransform.DirIVCache.Remove(pName)
 	defer fs.dirIVLock.Unlock()
 	err := syscallcompat.Mkdirat(int(dirfd.Fd()), cName, mode)
 	if err != nil {
@@ -86,13 +86,13 @@ func (fs *FS) Mkdir(newPath string, mode uint32, context *fuse.Context) (code fu
 		}
 
 		// Create directory
-		err = fs.mkdirWithIv(dirfd, cName, mode)
+		err = fs.mkdirWithIv(dirfd, newPath, cName, mode)
 		if err != nil {
 			nametransform.DeleteLongName(dirfd, cName)
 			return fuse.ToStatus(err)
 		}
 	} else {
-		err = fs.mkdirWithIv(dirfd, cName, mode)
+		err = fs.mkdirWithIv(dirfd, newPath, cName, mode)
 		if err != nil {
 			return fuse.ToStatus(err)
 		}
@@ -253,7 +253,7 @@ retry:
 		nametransform.DeleteLongName(parentDirFd, cName)
 	}
 	// The now-deleted directory may have been in the DirIV cache. Clear it.
-	fs.nameTransform.DirIVCache.Clear()
+	fs.nameTransform.DirIVCache.Remove(path)
 	return fuse.OK
 }
 
@@ -358,8 +358,8 @@ func (fs *FS) OpenDir(dirName string, context *fuse.Context) ([]fuse.DirEntry, f
 	if errorCount > 0 && len(plain) == 0 {
 		// Don't let the user stare on an empty directory. Report that things went
 		// wrong.
-		tlog.Warn.Printf("OpenDir %q: all %d entries were invalid, returning EIO",
-			cDirName, errorCount)
+		tlog.Warn.Printf("OpenDir %q: all %d entries were invalid, cachedIV: %d, returning EIO",
+			cDirName, errorCount, cachedIV)
 		status = fuse.EIO
 	}
 

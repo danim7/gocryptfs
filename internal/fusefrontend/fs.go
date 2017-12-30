@@ -47,7 +47,7 @@ var _ pathfs.FileSystem = &FS{} // Verify that interface is implemented.
 func NewFS(masterkey []byte, args Args) *FS {
 	cryptoCore := cryptocore.New(masterkey, args.CryptoBackend, contentenc.DefaultIVBits, args.HKDF, args.ForceDecode)
 	contentEnc := contentenc.New(cryptoCore, contentenc.DefaultBS, args.ForceDecode)
-	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64)
+	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64, args.DirIVCache_size, args.DirIVCache_timeout)
 
 	if args.SerializeReads {
 		serialize_reads.InitSerializer()
@@ -464,8 +464,9 @@ func (fs *FS) Rename(oldPath string, newPath string, context *fuse.Context) (cod
 		return fuse.ToStatus(err)
 	}
 	// The Rename may cause a directory to take the place of another directory.
-	// That directory may still be in the DirIV cache, clear it.
-	fs.nameTransform.DirIVCache.Clear()
+	// The directory may still be in the DirIV cache, clear it.
+	fs.nameTransform.DirIVCache.Remove(oldPath)
+	fs.nameTransform.DirIVCache.Remove(newPath)
 
 	// Handle long source file name
 	var oldDirFd *os.File

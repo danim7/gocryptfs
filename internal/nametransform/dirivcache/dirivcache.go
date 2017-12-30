@@ -1,41 +1,31 @@
 package dirivcache
 
 import (
+	//"fmt"
 	"log"
 	"strings"
 	"sync"
-	"time"
+	"bytes"
+
+	//"time"
+
+	"github.com/rfjakob/gocryptfs/internal/tlog"
 )
 
-const (
-	maxEntries = 100
-	expireTime = 1 * time.Second
-)
-
-type cacheEntry struct {
+type treeCacheEntry struct {
 	// DirIV of the directory.
 	iv []byte
+
 	// Relative ciphertext path of the directory.
 	cDir string
+
+	//folders contained in this node
+	subfolders map[string] *treeCacheEntry
 }
 
 // DirIVCache stores up to "maxEntries" directory IVs.
 type DirIVCache struct {
-	// data in the cache, indexed by relative plaintext path
-	// of the directory.
-	data map[string]cacheEntry
-
-	// The DirIV of the root directory gets special treatment because it
-	// cannot change (the root directory cannot be renamed or deleted).
-	// It is unaffected by the expiry timer and cache clears.
-	rootDirIV []byte
-
-	// expiry is the time when the whole cache expires.
-	// The cached entry my become out-of-date if the ciphertext directory is
-	// modifed behind the back of gocryptfs. Having an expiry time limits the
-	// inconstency to one second, like attr_timeout does for the kernel
-	// getattr cache.
-	expiry time.Time
+	treeCacheRoot treeCacheEntry
 
 	sync.RWMutex
 }
@@ -46,18 +36,35 @@ type DirIVCache struct {
 func (c *DirIVCache) Lookup(dir string) (iv []byte, cDir string) {
 	c.RLock()
 	defer c.RUnlock()
+
 	if dir == "" {
-		return c.rootDirIV, ""
+		return c.treeCacheRoot.iv, ""
 	}
-	if c.data == nil {
+	if c.treeCacheRoot.subfolders == nil {
 		return nil, ""
 	}
-	if time.Since(c.expiry) > 0 {
-		c.data = nil
-		return nil, ""
+
+	plainSegments := strings.Split(dir, "/")
+	var entry *treeCacheEntry
+	entry = &c.treeCacheRoot
+	var cipherPath bytes.Buffer
+	for i := 0; i < len(plainSegments); i++ {
+		if val, ok := entry.subfolders[plainSegments[i]]; ok {
+			if i == len(plainSegments)-1 {
+				tlog.Debug.Printf("Lookup found element %s in %s\n", plainSegments[i], dir)
+				cipherPath.WriteString(val.cDir)
+				return val.iv, cipherPath.String()
+			}
+			entry = val
+			cipherPath.WriteString(entry.cDir)
+			cipherPath.WriteString("/")
+		} else {
+			tlog.Debug.Printf("Lookup: not found element %s in %s\n", plainSegments[i], dir)
+			return nil, ""
+		}
 	}
-	v := c.data[dir]
-	return v.iv, v.cDir
+
+	return nil, "" //shall not get here
 }
 
 // Store - write an entry for directory "dir" into the cache.
@@ -68,35 +75,77 @@ func (c *DirIVCache) Lookup(dir string) (iv []byte, cDir string) {
 func (c *DirIVCache) Store(dir string, iv []byte, cDir string) {
 	c.Lock()
 	defer c.Unlock()
+
 	if dir == "" {
-		c.rootDirIV = iv
+		c.treeCacheRoot.iv = iv
+		c.treeCacheRoot.subfolders = make(map[string]*treeCacheEntry, 30)
 	}
 	// Sanity check: plaintext and chiphertext paths must have the same number
 	// of segments
 	if strings.Count(dir, "/") != strings.Count(cDir, "/") {
-		log.Panicf("inconsistent number of path segments: dir=%q cDir=%q", dir, cDir)
+		log.Panicf("inconsistent number of path segments: dir=%q cDir=%q\n", dir, cDir)
 	}
-	// Clear() may have cleared c.data: re-initialize
-	if c.data == nil {
-		c.data = make(map[string]cacheEntry, maxEntries)
-		// Set expiry time one second into the future
-		c.expiry = time.Now().Add(expireTime)
-	}
-	// Delete a random entry from the map if reached maxEntries
-	if len(c.data) >= maxEntries {
-		for k := range c.data {
-			delete(c.data, k)
-			break
+
+	plainSegments := strings.Split(dir, "/")
+	cipherSegments := strings.Split(cDir, "/")
+	var entry *treeCacheEntry
+	entry = &c.treeCacheRoot
+	for i := 0; i < len(plainSegments)-1; i++ {
+		if val, ok := entry.subfolders[plainSegments[i]]; ok {
+			entry = val
+		} else {
+			tlog.Debug.Printf("Store: missing intermediary element %s,%s en %s,%s\n", plainSegments[i], cipherSegments[i], dir, cDir)
+			return
 		}
 	}
-	c.data[dir] = cacheEntry{iv, cDir}
+
+	if entry.subfolders != nil {
+		var newEntry treeCacheEntry
+		newEntry.iv = iv
+		newEntry.cDir = cipherSegments[len(cipherSegments)-1]
+		newEntry.subfolders = make(map[string]*treeCacheEntry, 10)
+		entry.subfolders[plainSegments[len(plainSegments)-1]] = &newEntry
+		tlog.Debug.Printf("Store: inserted %s,%s in %s,%s\n", plainSegments[len(plainSegments)-1], cipherSegments[len(cipherSegments)-1], dir, cDir)
+	} else {
+		tlog.Debug.Printf("Store: uninitialized map in %s,%s in %s,%s\n", plainSegments[len(plainSegments)-1], cipherSegments[len(cipherSegments)-1], dir, cDir)
+		return
+	}
+
+
+}
+
+// Remove an entry from the cache.
+// Called from fusefrontend when directories are renamed or deleted.
+// dir ... relative plaintext path
+func (c *DirIVCache) Remove(dir string) {
+	c.Lock()
+	defer c.Unlock()
+
+	plainSegments := strings.Split(dir, "/")
+	var entry *treeCacheEntry
+	entry = &c.treeCacheRoot
+	for i := 0; i < len(plainSegments); i++ {
+		if i == len(plainSegments)-1 {
+			delete(entry.subfolders, plainSegments[i])
+			tlog.Debug.Printf("Removed element %s in %s, cipher node %s\n", plainSegments[i], dir, entry.cDir)
+			return
+		}
+		
+		if val, ok := entry.subfolders[plainSegments[i]]; ok {
+			entry = val
+			continue
+		} else {
+			tlog.Debug.Printf("Remove: not found element %s in %s\n", plainSegments[i], dir)
+			return
+		}
+	}
 }
 
 // Clear ... clear the cache.
-// Called from fusefrontend when directories are renamed or deleted.
 func (c *DirIVCache) Clear() {
 	c.Lock()
 	defer c.Unlock()
+
 	// Will be re-initialized in the next Store()
-	c.data = nil
+	c.treeCacheRoot.subfolders = nil
 }
