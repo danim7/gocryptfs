@@ -47,7 +47,7 @@ var _ pathfs.FileSystem = &FS{} // Verify that interface is implemented.
 func NewFS(masterkey []byte, args Args) *FS {
 	cryptoCore := cryptocore.New(masterkey, args.CryptoBackend, contentenc.DefaultIVBits, args.HKDF, args.ForceDecode)
 	contentEnc := contentenc.New(cryptoCore, contentenc.DefaultBS, args.ForceDecode)
-	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64, args.DirIVCache_size, args.DirIVCache_timeout)
+	nameTransform := nametransform.New(cryptoCore.EMECipher, args.LongNames, args.Raw64)
 
 	if args.SerializeReads {
 		serialize_reads.InitSerializer()

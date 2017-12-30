@@ -358,8 +358,8 @@ func (fs *FS) OpenDir(dirName string, context *fuse.Context) ([]fuse.DirEntry, f
 	if errorCount > 0 && len(plain) == 0 {
 		// Don't let the user stare on an empty directory. Report that things went
 		// wrong.
-		tlog.Warn.Printf("OpenDir %q: all %d entries were invalid, cachedIV: %d, returning EIO",
-			cDirName, errorCount, cachedIV)
+		tlog.Warn.Printf("OpenDir %q: all %d entries were invalid, returning EIO",
+			cDirName, errorCount)
 		status = fuse.EIO
 	}
 
